@@ -2,13 +2,14 @@
 spec_id: ADR-002
 spec_name: "Zalo Channel Architecture"
 spec_version: "1.0.0"
-status: proposed
+status: accepted
 tier: PROFESSIONAL
 stage: "02"
 category: technical
 owner: "CTO"
 created: 2026-02-15
 last_updated: 2026-02-15
+accepted: 2026-02-15
 related_adrs: ["ADR-001"]
 related_specs: ["SPEC-0003"]
 tags: ["zalo", "channel", "oauth", "webhook"]
@@ -19,7 +20,7 @@ effort: L
 # ADR-002: Zalo Channel Architecture
 
 **Date**: 2026-02-15
-**Status**: Proposed
+**Status**: Accepted
 **Deciders**: CTO
 
 ## Context

@@ -163,6 +163,19 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
+	if m.config.Channels.Zalo.Enabled && m.config.Channels.Zalo.AppID != "" {
+		logger.DebugC("channels", "Attempting to initialize Zalo channel")
+		zalo, err := NewZaloChannel(m.config.Channels.Zalo, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize Zalo channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["zalo"] = zalo
+			logger.InfoC("channels", "Zalo channel enabled successfully")
+		}
+	}
+
 	if m.config.Channels.OneBot.Enabled && m.config.Channels.OneBot.WSUrl != "" {
 		logger.DebugC("channels", "Attempting to initialize OneBot channel")
 		onebot, err := NewOneBotChannel(m.config.Channels.OneBot, m.bus)

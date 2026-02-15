@@ -78,6 +78,7 @@ type ChannelsConfig struct {
 	DingTalk DingTalkConfig `json:"dingtalk"`
 	Slack    SlackConfig    `json:"slack"`
 	LINE     LINEConfig     `json:"line"`
+	Zalo     ZaloConfig     `json:"zalo"`
 	OneBot   OneBotConfig   `json:"onebot"`
 	Web      WebConfig      `json:"web"`
 }
@@ -146,6 +147,17 @@ type LINEConfig struct {
 	WebhookPort        int                 `json:"webhook_port" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_PORT"`
 	WebhookPath        string              `json:"webhook_path" env:"PICOCLAW_CHANNELS_LINE_WEBHOOK_PATH"`
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_LINE_ALLOW_FROM"`
+}
+
+type ZaloConfig struct {
+	Enabled     bool                `json:"enabled" env:"PICOCLAW_CHANNELS_ZALO_ENABLED"`
+	AppID       string              `json:"app_id" env:"PICOCLAW_CHANNELS_ZALO_APP_ID"`
+	AppSecret   string              `json:"app_secret" env:"PICOCLAW_CHANNELS_ZALO_APP_SECRET"`
+	OASecretKey string              `json:"oa_secret_key" env:"PICOCLAW_CHANNELS_ZALO_OA_SECRET_KEY"`
+	WebhookHost string              `json:"webhook_host" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_HOST"`
+	WebhookPort int                 `json:"webhook_port" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_PORT"`
+	WebhookPath string              `json:"webhook_path" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_PATH"`
+	AllowFrom   FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_ZALO_ALLOW_FROM"`
 }
 
 type OneBotConfig struct {
@@ -294,6 +306,16 @@ func DefaultConfig() *Config {
 				WebhookPort:        18791,
 				WebhookPath:        "/webhook/line",
 				AllowFrom:          FlexibleStringSlice{},
+			},
+			Zalo: ZaloConfig{
+				Enabled:     false,
+				AppID:       "",
+				AppSecret:   "",
+				OASecretKey: "",
+				WebhookHost: "0.0.0.0",
+				WebhookPort: 18792,
+				WebhookPath: "/webhook/zalo",
+				AllowFrom:   FlexibleStringSlice{},
 			},
 			OneBot: OneBotConfig{
 				Enabled:            false,
