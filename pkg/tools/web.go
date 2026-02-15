@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -266,7 +267,8 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 }
 
 type WebFetchTool struct {
-	maxChars int
+	maxChars      int
+	skipSSRFCheck bool // for testing only
 }
 
 func NewWebFetchTool(maxChars int) *WebFetchTool {
@@ -321,6 +323,10 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 
 	if parsedURL.Host == "" {
 		return ErrorResult("missing domain in URL")
+	}
+
+	if !t.skipSSRFCheck && isInternalHost(parsedURL.Hostname()) {
+		return ErrorResult("access to internal/private network addresses is not allowed")
 	}
 
 	maxChars := t.maxChars
@@ -432,4 +438,24 @@ func (t *WebFetchTool) extractText(htmlContent string) string {
 	}
 
 	return strings.Join(cleanLines, "\n")
+}
+
+// isInternalHost checks if a hostname resolves to a private/internal IP address
+// to prevent SSRF attacks against internal services.
+func isInternalHost(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		ips, err := net.LookupIP(host)
+		if err != nil || len(ips) == 0 {
+			return false
+		}
+		ip = ips[0]
+	}
+
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.Equal(net.IPv4zero) ||
+		ip.Equal(net.IPv6zero)
 }

@@ -79,6 +79,7 @@ type ChannelsConfig struct {
 	Slack    SlackConfig    `json:"slack"`
 	LINE     LINEConfig     `json:"line"`
 	OneBot   OneBotConfig   `json:"onebot"`
+	Web      WebConfig      `json:"web"`
 }
 
 type WhatsAppConfig struct {
@@ -154,6 +155,15 @@ type OneBotConfig struct {
 	ReconnectInterval  int                 `json:"reconnect_interval" env:"PICOCLAW_CHANNELS_ONEBOT_RECONNECT_INTERVAL"`
 	GroupTriggerPrefix []string            `json:"group_trigger_prefix" env:"PICOCLAW_CHANNELS_ONEBOT_GROUP_TRIGGER_PREFIX"`
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_ONEBOT_ALLOW_FROM"`
+}
+
+type WebConfig struct {
+	Enabled       bool                `json:"enabled" env:"PICOCLAW_CHANNELS_WEB_ENABLED"`
+	Host          string              `json:"host" env:"PICOCLAW_CHANNELS_WEB_HOST"`
+	Port          int                 `json:"port" env:"PICOCLAW_CHANNELS_WEB_PORT"`
+	AuthToken     string              `json:"auth_token" env:"PICOCLAW_CHANNELS_WEB_AUTH_TOKEN"`
+	SessionMaxAge int                 `json:"session_max_age" env:"PICOCLAW_CHANNELS_WEB_SESSION_MAX_AGE"`
+	AllowFrom     FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_WEB_ALLOW_FROM"`
 }
 
 type HeartbeatConfig struct {
@@ -292,6 +302,13 @@ func DefaultConfig() *Config {
 				ReconnectInterval:  5,
 				GroupTriggerPrefix: []string{},
 				AllowFrom:          FlexibleStringSlice{},
+			},
+			Web: WebConfig{
+				Enabled:       false,
+				Host:          "0.0.0.0",
+				Port:          18791,
+				SessionMaxAge: 86400,
+				AllowFrom:     FlexibleStringSlice{},
 			},
 		},
 		Providers: ProvidersConfig{

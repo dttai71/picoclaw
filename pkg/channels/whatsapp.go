@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -12,7 +12,13 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/utils"
+)
+
+const (
+	waMaxReconnectAttempts = 10
+	waMaxReconnectDelay    = 5 * time.Minute
 )
 
 type WhatsAppChannel struct {
@@ -22,6 +28,8 @@ type WhatsAppChannel struct {
 	url       string
 	mu        sync.Mutex
 	connected bool
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func NewWhatsAppChannel(cfg config.WhatsAppConfig, bus *bus.MessageBus) (*WhatsAppChannel, error) {
@@ -36,7 +44,11 @@ func NewWhatsAppChannel(cfg config.WhatsAppConfig, bus *bus.MessageBus) (*WhatsA
 }
 
 func (c *WhatsAppChannel) Start(ctx context.Context) error {
-	log.Printf("Starting WhatsApp channel connecting to %s...", c.url)
+	logger.InfoCF("whatsapp", "Starting WhatsApp channel", map[string]interface{}{
+		"url": c.url,
+	})
+
+	c.ctx, c.cancel = context.WithCancel(ctx)
 
 	dialer := websocket.DefaultDialer
 	dialer.HandshakeTimeout = 10 * time.Second
@@ -52,22 +64,28 @@ func (c *WhatsAppChannel) Start(ctx context.Context) error {
 	c.mu.Unlock()
 
 	c.setRunning(true)
-	log.Println("WhatsApp channel connected")
+	logger.InfoC("whatsapp", "WhatsApp channel connected")
 
-	go c.listen(ctx)
+	go c.listen()
 
 	return nil
 }
 
 func (c *WhatsAppChannel) Stop(ctx context.Context) error {
-	log.Println("Stopping WhatsApp channel...")
+	logger.InfoC("whatsapp", "Stopping WhatsApp channel")
+
+	if c.cancel != nil {
+		c.cancel()
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.conn != nil {
 		if err := c.conn.Close(); err != nil {
-			log.Printf("Error closing WhatsApp connection: %v", err)
+			logger.ErrorCF("whatsapp", "Error closing connection", map[string]interface{}{
+				"error": err.Error(),
+			})
 		}
 		c.conn = nil
 	}
@@ -104,10 +122,10 @@ func (c *WhatsAppChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	return nil
 }
 
-func (c *WhatsAppChannel) listen(ctx context.Context) {
+func (c *WhatsAppChannel) listen() {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-c.ctx.Done():
 			return
 		default:
 			c.mu.Lock()
@@ -121,14 +139,28 @@ func (c *WhatsAppChannel) listen(ctx context.Context) {
 
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				log.Printf("WhatsApp read error: %v", err)
-				time.Sleep(2 * time.Second)
-				continue
+				logger.ErrorCF("whatsapp", "Read error", map[string]interface{}{
+					"error": err.Error(),
+				})
+
+				c.mu.Lock()
+				c.connected = false
+				if c.conn != nil {
+					c.conn.Close()
+					c.conn = nil
+				}
+				c.mu.Unlock()
+
+				// Attempt reconnect
+				go c.reconnect()
+				return
 			}
 
 			var msg map[string]interface{}
 			if err := json.Unmarshal(message, &msg); err != nil {
-				log.Printf("Failed to unmarshal WhatsApp message: %v", err)
+				logger.WarnCF("whatsapp", "Failed to unmarshal message", map[string]interface{}{
+					"error": err.Error(),
+				})
 				continue
 			}
 
@@ -137,11 +169,67 @@ func (c *WhatsAppChannel) listen(ctx context.Context) {
 				continue
 			}
 
-			if msgType == "message" {
+			switch msgType {
+			case "message":
 				c.handleIncomingMessage(msg)
+			case "status":
+				status, _ := msg["status"].(string)
+				logger.InfoCF("whatsapp", "Bridge status update", map[string]interface{}{
+					"status": status,
+				})
+			case "error":
+				code, _ := msg["code"].(string)
+				errMsg, _ := msg["message"].(string)
+				logger.ErrorCF("whatsapp", "Bridge error", map[string]interface{}{
+					"code":    code,
+					"message": errMsg,
+				})
 			}
 		}
 	}
+}
+
+func (c *WhatsAppChannel) reconnect() {
+	for attempt := 0; attempt < waMaxReconnectAttempts; attempt++ {
+		delay := time.Duration(math.Min(
+			float64(time.Second*(1<<uint(attempt))),
+			float64(waMaxReconnectDelay),
+		))
+
+		logger.InfoCF("whatsapp", "Reconnecting", map[string]interface{}{
+			"attempt": attempt + 1,
+			"delay":   delay.String(),
+		})
+
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+
+		dialer := websocket.DefaultDialer
+		dialer.HandshakeTimeout = 10 * time.Second
+
+		conn, _, err := dialer.Dial(c.url, nil)
+		if err != nil {
+			logger.WarnCF("whatsapp", "Reconnect failed", map[string]interface{}{
+				"attempt": attempt + 1,
+				"error":   err.Error(),
+			})
+			continue
+		}
+
+		c.mu.Lock()
+		c.conn = conn
+		c.connected = true
+		c.mu.Unlock()
+
+		logger.InfoC("whatsapp", "Reconnected successfully")
+		go c.listen()
+		return
+	}
+
+	logger.ErrorC("whatsapp", "Max reconnect attempts reached, giving up")
 }
 
 func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]interface{}) {
@@ -178,7 +266,10 @@ func (c *WhatsAppChannel) handleIncomingMessage(msg map[string]interface{}) {
 		metadata["user_name"] = userName
 	}
 
-	log.Printf("WhatsApp message from %s: %s...", senderID, utils.Truncate(content, 50))
+	logger.DebugCF("whatsapp", "Received message", map[string]interface{}{
+		"from":    senderID,
+		"preview": utils.Truncate(content, 50),
+	})
 
 	c.HandleMessage(senderID, chatID, content, mediaPaths, metadata)
 }

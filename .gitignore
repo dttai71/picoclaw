@@ -19,6 +19,7 @@ cmd/picoclaw/workspace
 config.json
 sessions/
 build/
+SDLC-Framework
 
 # Coverage
 

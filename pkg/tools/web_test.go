@@ -9,6 +9,37 @@ import (
 	"testing"
 )
 
+// newTestWebFetchTool creates a WebFetchTool with SSRF check disabled for local test servers.
+func newTestWebFetchTool(maxChars int) *WebFetchTool {
+	tool := NewWebFetchTool(maxChars)
+	tool.skipSSRFCheck = true
+	return tool
+}
+
+// TestWebTool_WebFetch_SSRF verifies that internal/private IPs are blocked
+func TestWebTool_WebFetch_SSRF(t *testing.T) {
+	tool := NewWebFetchTool(50000) // no skipSSRFCheck
+	ctx := context.Background()
+
+	blockedURLs := []string{
+		"http://127.0.0.1/secret",
+		"http://localhost/secret",
+		"http://10.0.0.1/admin",
+		"http://192.168.1.1/config",
+		"http://169.254.169.254/latest/meta-data/",
+	}
+
+	for _, u := range blockedURLs {
+		result := tool.Execute(ctx, map[string]interface{}{"url": u})
+		if !result.IsError {
+			t.Errorf("Expected SSRF block for %s, but got success", u)
+		}
+		if !strings.Contains(result.ForLLM, "internal/private") {
+			t.Errorf("Expected SSRF error message for %s, got: %s", u, result.ForLLM)
+		}
+	}
+}
+
 // TestWebTool_WebFetch_Success verifies successful URL fetching
 func TestWebTool_WebFetch_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +49,7 @@ func TestWebTool_WebFetch_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(50000)
+	tool := newTestWebFetchTool(50000)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -54,7 +85,7 @@ func TestWebTool_WebFetch_JSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(50000)
+	tool := newTestWebFetchTool(50000)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -145,7 +176,7 @@ func TestWebTool_WebFetch_Truncation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(1000) // Limit to 1000 chars
+	tool := newTestWebFetchTool(1000) // Limit to 1000 chars
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
@@ -210,7 +241,7 @@ func TestWebTool_WebFetch_HTMLExtraction(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tool := NewWebFetchTool(50000)
+	tool := newTestWebFetchTool(50000)
 	ctx := context.Background()
 	args := map[string]interface{}{
 		"url": server.URL,
