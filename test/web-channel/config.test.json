@@ -1,0 +1,36 @@
+{
+  "provider": {
+    "type": "claude",
+    "model": "claude-3-5-sonnet-20241022",
+    "api_key": "YOUR_ANTHROPIC_API_KEY",
+    "max_tokens": 4096
+  },
+  "workspace": "test/web-channel/workspace",
+  "channels": {
+    "web": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 8080,
+      "auth_token": "test-secret-token-123",
+      "session_max_age": 3600,
+      "allow_from": ["u1"]
+    }
+  },
+  "users": {
+    "u1": {
+      "name": "Test User",
+      "allowed": true,
+      "model": "claude-3-5-sonnet-20241022"
+    }
+  },
+  "tools": {
+    "filesystem": {
+      "enabled": true,
+      "restrict_to_workspace": true
+    },
+    "shell": {
+      "enabled": true
+    }
+  },
+  "log_level": "info"
+}
