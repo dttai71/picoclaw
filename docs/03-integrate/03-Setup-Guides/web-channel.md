@@ -1,3 +1,18 @@
+---
+spec_id: GUIDE-0001
+spec_name: "Web Channel Setup Guide"
+spec_version: "1.0.0"
+status: active
+tier: PROFESSIONAL
+stage: "03"
+category: integration
+owner: "PM/PJM"
+created: 2026-02-15
+last_updated: 2026-02-15
+related_adrs: ["ADR-001"]
+tags: ["web", "setup", "guide", "websocket", "auth"]
+---
+
 # Web Channel
 
 The Web channel provides a browser-based chat interface and dashboard for PicoClaw.
