@@ -239,7 +239,7 @@ That's it! You have a working AI assistant in 2 minutes.
 
 ## 💬 Chat Apps
 
-Talk to your picoclaw through Telegram, Discord, DingTalk, or LINE
+Talk to your picoclaw through Telegram, Discord, DingTalk, LINE, or Zalo
 
 | Channel      | Setup                              |
 | ------------ | ---------------------------------- |
@@ -248,6 +248,7 @@ Talk to your picoclaw through Telegram, Discord, DingTalk, or LINE
 | **QQ**       | Easy (AppID + AppSecret)           |
 | **DingTalk** | Medium (app credentials)           |
 | **LINE**     | Medium (credentials + webhook URL) |
+| **Zalo**     | Medium (OAuth + webhook URL)       |
 
 <details>
 <summary><b>Telegram</b> (Recommended)</summary>
@@ -444,6 +445,63 @@ picoclaw gateway
 > In group chats, the bot responds only when @mentioned. Replies quote the original message.
 
 > **Docker Compose**: Add `ports: ["18791:18791"]` to the `picoclaw-gateway` service to expose the webhook port.
+
+</details>
+
+<details>
+<summary><b>Zalo</b> (Vietnam)</summary>
+
+**1. Create a Zalo Official Account**
+
+- Register at [Zalo OA](https://oa.zalo.me)
+- Create a Zalo App at [Zalo Developers](https://developers.zalo.me)
+- Approve "Send and receive messages" permission
+- Copy **App ID**, **App Secret**, and **OA Secret Key**
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "zalo": {
+      "enabled": true,
+      "app_id": "YOUR_ZALO_APP_ID",
+      "app_secret": "YOUR_ZALO_APP_SECRET",
+      "oa_secret_key": "YOUR_OA_SECRET_KEY",
+      "webhook_host": "0.0.0.0",
+      "webhook_port": 18792,
+      "webhook_path": "/webhook/zalo",
+      "allow_from": []
+    }
+  }
+}
+```
+
+**3. Authorize OAuth**
+
+```bash
+picoclaw auth login --provider zalo
+```
+
+This opens your browser for Zalo OAuth consent. Tokens are saved to `~/.picoclaw/zalo_tokens.json`.
+
+**4. Set up Webhook URL**
+
+```bash
+ngrok http 18792
+```
+
+In the Zalo OA dashboard, set the webhook URL to `https://your-domain/webhook/zalo` and enter your OA Secret Key.
+
+**5. Run**
+
+```bash
+picoclaw gateway
+```
+
+> Zalo OA supports 1:1 messaging only (no group chats). Text messages only in Phase 1.
+
+> **Docker Compose**: Add `ports: ["18792:18792"]` to expose the Zalo webhook port.
 
 </details>
 

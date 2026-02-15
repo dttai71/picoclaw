@@ -53,7 +53,7 @@ Legacy content archived in `docs/10-archive/03-Legacy/` per RFC-001 (SDLC 6.0.5)
 
 | Sprint | Feature | Status |
 |--------|---------|--------|
-| [SPRINT-zalo-channel](02-Sprint-Plans/SPRINT-zalo-channel.md) | Zalo OA Channel Integration | Awaiting CTO Approval |
+| [SPRINT-zalo-channel](02-Sprint-Plans/SPRINT-zalo-channel.md) | Zalo OA Channel Integration | Completed |
 
 ---
 

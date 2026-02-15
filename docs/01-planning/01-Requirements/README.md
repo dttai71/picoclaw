@@ -2,7 +2,7 @@
 spec_id: SPEC-0003
 spec_name: "Zalo Channel Integration Requirements"
 spec_version: "1.0.0"
-status: draft
+status: implemented
 tier: PROFESSIONAL
 stage: "01"
 category: functional
