@@ -43,5 +43,12 @@ tasks/
 .vscode/
 .idea/
 
+# Node.js (whatsapp-bridge)
+node_modules/
+tools/whatsapp-bridge/auth_store/
+
+# Claude Code
+.claude/
+
 # Added by goreleaser init:
 dist/

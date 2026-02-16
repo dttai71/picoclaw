@@ -17,7 +17,7 @@
 - Ultra-lightweight personal AI assistant in Go
 - Targets: <10MB RAM, 1-second boot, $10 hardware
 - Supports: RISC-V, ARM64, x86_64
-- Multi-channel (Telegram, Discord, WhatsApp, etc.)
+- Multi-channel (Telegram, Discord, WhatsApp, Zalo, ZaloUser, etc.)
 - Multi-provider (Anthropic, OpenRouter, Zhipu, etc.)
 
 **Core Philosophy:**
@@ -88,7 +88,7 @@ Channel (Telegram/Discord/etc.) → MessageBus.PublishInbound()
 - **Agent Loop** (`pkg/agent/loop.go`) - Core orchestration
 - **Providers** (`pkg/providers/`) - LLM abstraction (HTTP, Claude, Codex, GitHub Copilot)
 - **Tools** (`pkg/tools/`) - Filesystem, shell, web, message, cron, I2C, SPI
-- **Channels** (`pkg/channels/`) - 10+ platforms (Telegram, Discord, Slack, WhatsApp, etc.)
+- **Channels** (`pkg/channels/`) - 12+ platforms (Telegram, Discord, Slack, WhatsApp, Zalo Bot Platform, ZaloUser, LINE, QQ, Feishu, DingTalk, OneBot, MaixCAM)
 - **Config** (`pkg/config/`) - JSON + env vars (`PICOCLAW_*` prefix)
 
 ### Critical Constraints

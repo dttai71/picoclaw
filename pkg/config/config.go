@@ -79,6 +79,7 @@ type ChannelsConfig struct {
 	Slack    SlackConfig    `json:"slack"`
 	LINE     LINEConfig     `json:"line"`
 	Zalo     ZaloConfig     `json:"zalo"`
+	ZaloUser ZaloUserConfig `json:"zalouser"`
 	OneBot   OneBotConfig   `json:"onebot"`
 	Web      WebConfig      `json:"web"`
 }
@@ -149,15 +150,24 @@ type LINEConfig struct {
 	AllowFrom          FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_LINE_ALLOW_FROM"`
 }
 
+// ZaloConfig — Zalo Bot Platform API (permanent token, no OAuth)
 type ZaloConfig struct {
-	Enabled     bool                `json:"enabled" env:"PICOCLAW_CHANNELS_ZALO_ENABLED"`
-	AppID       string              `json:"app_id" env:"PICOCLAW_CHANNELS_ZALO_APP_ID"`
-	AppSecret   string              `json:"app_secret" env:"PICOCLAW_CHANNELS_ZALO_APP_SECRET"`
-	OASecretKey string              `json:"oa_secret_key" env:"PICOCLAW_CHANNELS_ZALO_OA_SECRET_KEY"`
-	WebhookHost string              `json:"webhook_host" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_HOST"`
-	WebhookPort int                 `json:"webhook_port" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_PORT"`
-	WebhookPath string              `json:"webhook_path" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_PATH"`
-	AllowFrom   FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_ZALO_ALLOW_FROM"`
+	Enabled       bool                `json:"enabled" env:"PICOCLAW_CHANNELS_ZALO_ENABLED"`
+	Token         string              `json:"token" env:"PICOCLAW_CHANNELS_ZALO_TOKEN"`
+	Mode          string              `json:"mode" env:"PICOCLAW_CHANNELS_ZALO_MODE"` // "polling" (default) or "webhook"
+	WebhookHost   string              `json:"webhook_host" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_HOST"`
+	WebhookPort   int                 `json:"webhook_port" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_PORT"`
+	WebhookPath   string              `json:"webhook_path" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_PATH"`
+	WebhookSecret string              `json:"webhook_secret" env:"PICOCLAW_CHANNELS_ZALO_WEBHOOK_SECRET"`
+	AllowFrom     FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_ZALO_ALLOW_FROM"`
+}
+
+// ZaloUserConfig — Zalo Personal via zca-cli
+type ZaloUserConfig struct {
+	Enabled   bool                `json:"enabled" env:"PICOCLAW_CHANNELS_ZALOUSER_ENABLED"`
+	Profile   string              `json:"profile" env:"PICOCLAW_CHANNELS_ZALOUSER_PROFILE"`
+	ZcaPath   string              `json:"zca_path" env:"PICOCLAW_CHANNELS_ZALOUSER_ZCA_PATH"`
+	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_ZALOUSER_ALLOW_FROM"`
 }
 
 type OneBotConfig struct {
@@ -308,14 +318,20 @@ func DefaultConfig() *Config {
 				AllowFrom:          FlexibleStringSlice{},
 			},
 			Zalo: ZaloConfig{
-				Enabled:     false,
-				AppID:       "",
-				AppSecret:   "",
-				OASecretKey: "",
-				WebhookHost: "0.0.0.0",
-				WebhookPort: 18792,
-				WebhookPath: "/webhook/zalo",
-				AllowFrom:   FlexibleStringSlice{},
+				Enabled:       false,
+				Token:         "",
+				Mode:          "polling",
+				WebhookHost:   "0.0.0.0",
+				WebhookPort:   18792,
+				WebhookPath:   "/webhook/zalo",
+				WebhookSecret: "",
+				AllowFrom:     FlexibleStringSlice{},
+			},
+			ZaloUser: ZaloUserConfig{
+				Enabled:   false,
+				Profile:   "",
+				ZcaPath:   "zca",
+				AllowFrom: FlexibleStringSlice{},
 			},
 			OneBot: OneBotConfig{
 				Enabled:            false,

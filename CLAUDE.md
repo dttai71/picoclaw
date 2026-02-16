@@ -46,7 +46,7 @@ Workspace templates in `workspace/` are embedded into the binary via `//go:embed
 | `agent` | Agent loop: receives messages, builds context, calls LLM, executes tool calls in a loop, returns responses |
 | `providers` | LLM provider abstraction. `LLMProvider` interface with `Chat()` and `GetDefaultModel()`. Implementations: HTTP (OpenAI-compatible), Claude, Codex, GitHub Copilot |
 | `tools` | Tool registry and implementations (filesystem, shell, web search, cron, I2C, SPI, message, spawn) |
-| `channels` | Multi-channel integrations: Telegram, Discord, Slack, Feishu, DingTalk, LINE, QQ, OneBot, MaixCAM, WhatsApp |
+| `channels` | Multi-channel integrations: Telegram, Discord, Slack, Feishu, DingTalk, LINE, QQ, OneBot, MaixCAM, WhatsApp (Baileys bridge), Zalo (Bot Platform API), ZaloUser (zca-cli personal) |
 | `bus` | Event message bus for pub/sub between agent, channels, and services |
 | `config` | Config loading from `~/.picoclaw/config.json` with env var overrides (`PICOCLAW_*` prefix, via `caarlos0/env` struct tags) |
 | `session` | Conversation history persistence (JSON files) |
@@ -84,3 +84,27 @@ Version, git commit, build time, and Go version are injected via LDFLAGS at buil
 ## Config
 
 Config lives at `~/.picoclaw/config.json`. All values can be overridden with `PICOCLAW_*` environment variables. Key sections: `agents.defaults` (model, workspace, max_tokens), `providers` (API keys/bases), `channels` (bot tokens), `tools.web` (search config), `heartbeat`, `gateway`.
+
+## Channel-Specific Notes
+
+### Zalo (Bot Platform API)
+
+- Uses `https://bot-api.zapps.me/bot{token}/{method}` (Telegram-style API)
+- Token format: `id:secret` from [Zalo Bot Creator](https://zalo.me/s/botcreator/)
+- Supports long-polling (default) and webhook modes
+- Config: `channels.zalo.token`, `channels.zalo.mode` ("polling" or "webhook")
+
+### ZaloUser (Personal Account via zca-cli)
+
+- Wraps external `zca` CLI binary for personal Zalo account automation
+- Requires `zca` in PATH (install from zca-cli docs)
+- Uses `zca listen -r -k` for inbound, `zca msg send` for outbound
+- Config: `channels.zalouser.enabled`, `channels.zalouser.profile`
+
+### WhatsApp (Baileys Bridge)
+
+- Requires separate Node.js bridge process (`tools/whatsapp-bridge/`)
+- Bridge uses Baileys v7 (ESM) to connect to WhatsApp Web via WebSocket
+- PicoClaw connects as WebSocket client to `ws://localhost:3001`
+- First run requires QR code scan (WhatsApp → Linked Devices)
+- Config: `channels.whatsapp.bridge_url`

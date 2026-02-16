@@ -1,6 +1,6 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const { WebSocketServer } = require('ws');
-const qrcode = require('qrcode-terminal');
+import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
+import { WebSocketServer } from 'ws';
+import qrcode from 'qrcode-terminal';
 
 const WS_PORT = parseInt(process.env.BRIDGE_PORT || '3001', 10);
 const PING_INTERVAL = 54000;

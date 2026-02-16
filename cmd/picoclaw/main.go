@@ -828,11 +828,9 @@ func authLoginCmd() {
 		authLoginOpenAI(useDeviceCode)
 	case "anthropic":
 		authLoginPasteToken(provider)
-	case "zalo":
-		authLoginZalo()
 	default:
 		fmt.Printf("Unsupported provider: %s\n", provider)
-		fmt.Println("Supported providers: openai, anthropic, zalo")
+		fmt.Println("Supported providers: openai, anthropic")
 	}
 }
 
@@ -898,26 +896,6 @@ func authLoginPasteToken(provider string) {
 	}
 
 	fmt.Printf("Token saved for %s!\n", provider)
-}
-
-func authLoginZalo() {
-	appCfg, err := loadConfig()
-	if err != nil {
-		fmt.Printf("Failed to load config: %v\n", err)
-		os.Exit(1)
-	}
-
-	zaloCfg := appCfg.Channels.Zalo
-	if zaloCfg.AppID == "" || zaloCfg.AppSecret == "" {
-		fmt.Println("Error: Zalo app_id and app_secret must be configured in ~/.picoclaw/config.json")
-		fmt.Println("See: docs/03-integrate/03-Setup-Guides/zalo-channel.md")
-		os.Exit(1)
-	}
-
-	if err := channels.ZaloOAuthLogin(zaloCfg); err != nil {
-		fmt.Printf("Zalo login failed: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 func authLogoutCmd() {

@@ -163,7 +163,7 @@ func (m *Manager) initChannels() error {
 		}
 	}
 
-	if m.config.Channels.Zalo.Enabled && m.config.Channels.Zalo.AppID != "" {
+	if m.config.Channels.Zalo.Enabled && m.config.Channels.Zalo.Token != "" {
 		logger.DebugC("channels", "Attempting to initialize Zalo channel")
 		zalo, err := NewZaloChannel(m.config.Channels.Zalo, m.bus)
 		if err != nil {
@@ -173,6 +173,19 @@ func (m *Manager) initChannels() error {
 		} else {
 			m.channels["zalo"] = zalo
 			logger.InfoC("channels", "Zalo channel enabled successfully")
+		}
+	}
+
+	if m.config.Channels.ZaloUser.Enabled {
+		logger.DebugC("channels", "Attempting to initialize ZaloUser channel")
+		zalouser, err := NewZaloUserChannel(m.config.Channels.ZaloUser, m.bus)
+		if err != nil {
+			logger.ErrorCF("channels", "Failed to initialize ZaloUser channel", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			m.channels["zalouser"] = zalouser
+			logger.InfoC("channels", "ZaloUser channel enabled successfully")
 		}
 	}
 

@@ -167,9 +167,9 @@ func (c *WebChannel) Start(ctx context.Context) error {
 
 	go func() {
 		logger.InfoCF("web", "Web server listening", map[string]interface{}{
-			"addr":     addr,
-			"auth":     c.config.AuthToken != "",
-			"max_age":  c.config.SessionMaxAge,
+			"addr":    addr,
+			"auth":    c.config.AuthToken != "",
+			"max_age": c.config.SessionMaxAge,
 		})
 		if err := c.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.ErrorCF("web", "Web server error", map[string]interface{}{

@@ -1,17 +1,12 @@
 package channels
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -19,331 +14,288 @@ import (
 
 func TestNewZaloChannel(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     config.ZaloConfig
-		wantErr string
+		name      string
+		cfg       config.ZaloConfig
+		wantError bool
 	}{
 		{
-			name: "valid config",
-			cfg: config.ZaloConfig{
-				Enabled:     true,
-				AppID:       "test_app_id",
-				AppSecret:   "test_secret",
-				OASecretKey: "test_oa_key",
-				WebhookHost: "0.0.0.0",
-				WebhookPort: 18792,
-				WebhookPath: "/webhook/zalo",
-			},
-			wantErr: "",
-		},
-		{
-			name: "missing app_id",
-			cfg: config.ZaloConfig{
-				Enabled:     true,
-				OASecretKey: "test_oa_key",
-			},
-			wantErr: "zalo app_id and oa_secret_key are required",
-		},
-		{
-			name: "missing oa_secret_key",
+			name: "valid token",
 			cfg: config.ZaloConfig{
 				Enabled: true,
-				AppID:   "test_app_id",
+				Token:   "123456:secret_token",
+				Mode:    "polling",
 			},
-			wantErr: "zalo app_id and oa_secret_key are required",
+			wantError: false,
 		},
 		{
-			name:    "both missing",
-			cfg:     config.ZaloConfig{Enabled: true},
-			wantErr: "zalo app_id and oa_secret_key are required",
+			name: "missing token",
+			cfg: config.ZaloConfig{
+				Enabled: true,
+				Token:   "",
+			},
+			wantError: true,
+		},
+		{
+			name: "invalid token format (no colon)",
+			cfg: config.ZaloConfig{
+				Enabled: true,
+				Token:   "invalid_token",
+			},
+			wantError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ch, err := NewZaloChannel(tt.cfg, nil)
-			if tt.wantErr != "" {
-				if err == nil {
-					t.Fatalf("expected error %q, got nil", tt.wantErr)
-				}
-				if err.Error() != tt.wantErr {
-					t.Fatalf("expected error %q, got %q", tt.wantErr, err.Error())
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if ch.Name() != "zalo" {
-				t.Fatalf("expected channel name 'zalo', got %q", ch.Name())
-			}
-		})
-	}
-}
-
-func TestZaloVerifySignature(t *testing.T) {
-	secretKey := "test_oa_secret_key"
-	ch := &ZaloChannel{
-		config: config.ZaloConfig{OASecretKey: secretKey},
-	}
-
-	body := []byte(`{"event_name":"user_send_text","sender":{"id":"123"}}`)
-
-	// Compute valid HMAC-SHA256 signature
-	mac := hmac.New(sha256.New, []byte(secretKey))
-	mac.Write(body)
-	validSignature := hex.EncodeToString(mac.Sum(nil))
-
-	tests := []struct {
-		name      string
-		body      []byte
-		signature string
-		want      bool
-	}{
-		{
-			name:      "valid signature",
-			body:      body,
-			signature: validSignature,
-			want:      true,
-		},
-		{
-			name:      "invalid signature",
-			body:      body,
-			signature: "deadbeef1234567890abcdef",
-			want:      false,
-		},
-		{
-			name:      "empty signature",
-			body:      body,
-			signature: "",
-			want:      false,
-		},
-		{
-			name:      "tampered body",
-			body:      []byte(`{"event_name":"user_send_text","sender":{"id":"999"}}`),
-			signature: validSignature,
-			want:      false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := ch.verifySignature(tt.body, tt.signature)
-			if got != tt.want {
-				t.Fatalf("verifySignature() = %v, want %v", got, tt.want)
+			messageBus := bus.NewMessageBus()
+			_, err := NewZaloChannel(tt.cfg, messageBus)
+			if (err != nil) != tt.wantError {
+				t.Errorf("NewZaloChannel() error = %v, wantError %v", err, tt.wantError)
 			}
 		})
 	}
 }
 
 func TestZaloWebhookHandler(t *testing.T) {
-	secretKey := "webhook_test_key"
-	mb := bus.NewMessageBus()
-	ch := &ZaloChannel{
-		BaseChannel: NewBaseChannel("zalo", nil, mb, nil),
-		config:      config.ZaloConfig{OASecretKey: secretKey},
+	cfg := config.ZaloConfig{
+		Enabled:       true,
+		Token:         "123456:secret_token",
+		Mode:          "webhook",
+		WebhookSecret: "test_secret",
 	}
 
-	sign := func(body []byte) string {
-		mac := hmac.New(sha256.New, []byte(secretKey))
-		mac.Write(body)
-		return hex.EncodeToString(mac.Sum(nil))
+	messageBus := bus.NewMessageBus()
+	ch, err := NewZaloChannel(cfg, messageBus)
+	if err != nil {
+		t.Fatalf("Failed to create channel: %v", err)
 	}
 
-	t.Run("GET method rejected", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/webhook/zalo", nil)
-		w := httptest.NewRecorder()
-		ch.webhookHandler(w, req)
-		if w.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("expected 405, got %d", w.Code)
-		}
-	})
+	ch.ctx = context.Background()
 
-	t.Run("missing signature returns 401", func(t *testing.T) {
-		body := []byte(`{"event_name":"user_send_text"}`)
-		req := httptest.NewRequest(http.MethodPost, "/webhook/zalo", strings.NewReader(string(body)))
-		w := httptest.NewRecorder()
-		ch.webhookHandler(w, req)
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", w.Code)
-		}
-	})
-
-	t.Run("invalid signature returns 401", func(t *testing.T) {
-		body := []byte(`{"event_name":"user_send_text"}`)
-		req := httptest.NewRequest(http.MethodPost, "/webhook/zalo", strings.NewReader(string(body)))
-		req.Header.Set("X-ZaloOA-Signature", "invalid_signature")
-		w := httptest.NewRecorder()
-		ch.webhookHandler(w, req)
-		if w.Code != http.StatusUnauthorized {
-			t.Fatalf("expected 401, got %d", w.Code)
-		}
-	})
-
-	t.Run("valid signature returns 200", func(t *testing.T) {
-		body := []byte(`{"event_name":"user_send_text","sender":{"id":"123"},"recipient":{"id":"456"},"message":{"msg_id":"m1","text":"hello"}}`)
-		req := httptest.NewRequest(http.MethodPost, "/webhook/zalo", strings.NewReader(string(body)))
-		req.Header.Set("X-ZaloOA-Signature", sign(body))
-		w := httptest.NewRecorder()
-		ch.webhookHandler(w, req)
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200, got %d", w.Code)
-		}
-	})
-
-	t.Run("malformed JSON returns 400", func(t *testing.T) {
-		body := []byte(`{invalid json}`)
-		req := httptest.NewRequest(http.MethodPost, "/webhook/zalo", strings.NewReader(string(body)))
-		req.Header.Set("X-ZaloOA-Signature", sign(body))
-		w := httptest.NewRecorder()
-		ch.webhookHandler(w, req)
-		if w.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400, got %d", w.Code)
-		}
-	})
-}
-
-func TestZaloChannelIsAllowed(t *testing.T) {
 	tests := []struct {
-		name      string
-		allowFrom []string
-		senderID  string
-		want      bool
+		name           string
+		method         string
+		secret         string
+		body           string
+		wantStatusCode int
 	}{
 		{
-			name:      "empty allowlist allows all",
-			allowFrom: nil,
-			senderID:  "user123",
-			want:      true,
+			name:           "GET method rejected",
+			method:         "GET",
+			secret:         "test_secret",
+			body:           "",
+			wantStatusCode: http.StatusMethodNotAllowed,
 		},
 		{
-			name:      "allowed user passes",
-			allowFrom: []string{"user123"},
-			senderID:  "user123",
-			want:      true,
+			name:           "missing secret returns 401",
+			method:         "POST",
+			secret:         "",
+			body:           `{}`,
+			wantStatusCode: http.StatusUnauthorized,
 		},
 		{
-			name:      "denied user blocked",
-			allowFrom: []string{"user123"},
-			senderID:  "user456",
-			want:      false,
+			name:           "invalid secret returns 401",
+			method:         "POST",
+			secret:         "wrong_secret",
+			body:           `{}`,
+			wantStatusCode: http.StatusUnauthorized,
+		},
+		{
+			name:           "valid secret returns 200",
+			method:         "POST",
+			secret:         "test_secret",
+			body:           `{"event_name": "message.text.received"}`,
+			wantStatusCode: http.StatusOK,
+		},
+		{
+			name:           "malformed JSON returns 400",
+			method:         "POST",
+			secret:         "test_secret",
+			body:           `{invalid json`,
+			wantStatusCode: http.StatusBadRequest,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := config.ZaloConfig{
-				Enabled:     true,
-				AppID:       "test",
-				OASecretKey: "test",
-				AllowFrom:   config.FlexibleStringSlice(tt.allowFrom),
+			req := httptest.NewRequest(tt.method, "/webhook/zalo", strings.NewReader(tt.body))
+			if tt.secret != "" {
+				req.Header.Set("X-Bot-Api-Secret-Token", tt.secret)
 			}
-			ch, err := NewZaloChannel(cfg, nil)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got := ch.IsAllowed(tt.senderID); got != tt.want {
-				t.Fatalf("IsAllowed(%q) = %v, want %v", tt.senderID, got, tt.want)
+
+			w := httptest.NewRecorder()
+			ch.webhookHandler(w, req)
+
+			if w.Code != tt.wantStatusCode {
+				t.Errorf("webhookHandler() status = %d, want %d", w.Code, tt.wantStatusCode)
 			}
 		})
 	}
 }
 
-func TestZaloTokenManagement(t *testing.T) {
-	// Use temp directory for token file
-	tmpDir := t.TempDir()
-	origHome := os.Getenv("HOME")
-	t.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
-
-	// Create .picoclaw directory
-	picoDir := filepath.Join(tmpDir, ".picoclaw")
-	if err := os.MkdirAll(picoDir, 0755); err != nil {
-		t.Fatalf("failed to create .picoclaw dir: %v", err)
+func TestZaloProcessUpdate(t *testing.T) {
+	cfg := config.ZaloConfig{
+		Enabled: true,
+		Token:   "123456:secret_token",
+		Mode:    "polling",
 	}
 
-	ch := &ZaloChannel{
-		config: config.ZaloConfig{
-			AppID:     "test_app",
-			AppSecret: "test_secret",
+	messageBus := bus.NewMessageBus()
+	ch, err := NewZaloChannel(cfg, messageBus)
+	if err != nil {
+		t.Fatalf("Failed to create channel: %v", err)
+	}
+
+	ch.ctx = context.Background()
+	ch.setRunning(true)
+
+	tests := []struct {
+		name      string
+		update    map[string]interface{}
+		wantCalls int // expected message bus calls
+	}{
+		{
+			name: "text message",
+			update: map[string]interface{}{
+				"event_name": "message.text.received",
+				"message": map[string]interface{}{
+					"text": "Hello",
+				},
+				"sender": map[string]interface{}{
+					"id": "user123",
+				},
+				"recipient": map[string]interface{}{
+					"id": "user456",
+				},
+			},
+			wantCalls: 1,
+		},
+		{
+			name: "image message (not implemented)",
+			update: map[string]interface{}{
+				"event_name": "message.image.received",
+			},
+			wantCalls: 0,
+		},
+		{
+			name: "sticker message (not implemented)",
+			update: map[string]interface{}{
+				"event_name": "message.sticker.received",
+			},
+			wantCalls: 0,
 		},
 	}
 
-	t.Run("load missing file returns error", func(t *testing.T) {
-		err := ch.loadTokens()
-		if err == nil {
-			t.Fatal("expected error loading missing tokens, got nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch.processUpdate(tt.update)
+			// Note: In a real test, we'd verify the message bus received the expected calls
+		})
+	}
+}
+
+func TestZaloSendMessage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/sendMessage") {
+			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
+
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("Failed to decode payload: %v", err)
+		}
+
+		if payload["chat_id"] == "" {
+			t.Error("Missing chat_id in payload")
+		}
+		if payload["text"] == "" {
+			t.Error("Missing text in payload")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok": true}`))
+	}))
+	defer server.Close()
+
+	cfg := config.ZaloConfig{
+		Enabled: true,
+		Token:   "123456:secret_token",
+		Mode:    "polling",
+	}
+
+	messageBus := bus.NewMessageBus()
+	ch, err := NewZaloChannel(cfg, messageBus)
+	if err != nil {
+		t.Fatalf("Failed to create channel: %v", err)
+	}
+
+	// Override API base for testing
+	ch.apiBase = server.URL + "/bot123456:secret_token"
+	ch.ctx = context.Background()
+	ch.setRunning(true)
+
+	err = ch.Send(context.Background(), bus.OutboundMessage{
+		ChatID:  "user123",
+		Content: "Test message",
 	})
 
-	t.Run("save and load tokens", func(t *testing.T) {
-		tokens := &zaloTokens{
-			AccessToken:  "test_access_token",
-			RefreshToken: "test_refresh_token",
-			ExpiresAt:    time.Now().Add(24 * time.Hour),
-		}
+	if err != nil {
+		t.Errorf("Send() error = %v", err)
+	}
+}
 
-		if err := ch.saveTokens(tokens); err != nil {
-			t.Fatalf("failed to save tokens: %v", err)
-		}
+func TestChunkText(t *testing.T) {
+	tests := []struct {
+		name       string
+		text       string
+		maxLen     int
+		wantChunks int
+	}{
+		{
+			name:       "short text (no chunking)",
+			text:       "Hello",
+			maxLen:     2000,
+			wantChunks: 1,
+		},
+		{
+			name:       "exact boundary",
+			text:       strings.Repeat("a", 2000),
+			maxLen:     2000,
+			wantChunks: 1,
+		},
+		{
+			name:       "needs chunking",
+			text:       strings.Repeat("a", 2001),
+			maxLen:     2000,
+			wantChunks: 2,
+		},
+		{
+			name:       "chunk at newline",
+			text:       strings.Repeat("a", 1000) + "\n" + strings.Repeat("b", 1500),
+			maxLen:     2000,
+			wantChunks: 2,
+		},
+	}
 
-		// Verify file permissions
-		path := filepath.Join(picoDir, zaloTokenFileName)
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatalf("failed to stat token file: %v", err)
-		}
-		if info.Mode().Perm() != 0600 {
-			t.Fatalf("expected 0600 permissions, got %o", info.Mode().Perm())
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chunks := chunkText(tt.text, tt.maxLen)
+			if len(chunks) != tt.wantChunks {
+				t.Errorf("chunkText() returned %d chunks, want %d", len(chunks), tt.wantChunks)
+			}
 
-		// Verify file content is valid JSON
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("failed to read token file: %v", err)
-		}
-		var loaded zaloTokens
-		if err := json.Unmarshal(data, &loaded); err != nil {
-			t.Fatalf("token file is not valid JSON: %v", err)
-		}
-		if loaded.AccessToken != "test_access_token" {
-			t.Fatalf("expected access_token 'test_access_token', got %q", loaded.AccessToken)
-		}
-		if loaded.RefreshToken != "test_refresh_token" {
-			t.Fatalf("expected refresh_token 'test_refresh_token', got %q", loaded.RefreshToken)
-		}
+			// Verify all chunks fit within maxLen
+			for i, chunk := range chunks {
+				if len(chunk) > tt.maxLen {
+					t.Errorf("Chunk %d exceeds maxLen: %d > %d", i, len(chunk), tt.maxLen)
+				}
+			}
 
-		// Load tokens via channel method
-		ch2 := &ZaloChannel{config: ch.config}
-		if err := ch2.loadTokens(); err != nil {
-			t.Fatalf("failed to load tokens: %v", err)
-		}
-		ch2.tokenMu.RLock()
-		if ch2.tokens.AccessToken != "test_access_token" {
-			t.Fatalf("loaded access_token mismatch: %q", ch2.tokens.AccessToken)
-		}
-		ch2.tokenMu.RUnlock()
-	})
-
-	t.Run("token expiry detection", func(t *testing.T) {
-		// Token that expires in 10 minutes (within refresh buffer)
-		expiringSoon := &zaloTokens{
-			AccessToken:  "expiring_soon",
-			RefreshToken: "refresh",
-			ExpiresAt:    time.Now().Add(10 * time.Minute),
-		}
-		if time.Until(expiringSoon.ExpiresAt) > zaloRefreshBuffer {
-			t.Fatal("expected token to be within refresh buffer")
-		}
-
-		// Token that expires in 2 hours (outside refresh buffer)
-		expiringLater := &zaloTokens{
-			AccessToken:  "expiring_later",
-			RefreshToken: "refresh",
-			ExpiresAt:    time.Now().Add(2 * time.Hour),
-		}
-		if time.Until(expiringLater.ExpiresAt) <= zaloRefreshBuffer {
-			t.Fatal("expected token to be outside refresh buffer")
-		}
-	})
+			// Verify chunks concatenate to original text
+			result := strings.Join(chunks, "")
+			if result != tt.text {
+				t.Error("Chunks don't concatenate to original text")
+			}
+		})
+	}
 }

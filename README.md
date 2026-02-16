@@ -239,16 +239,17 @@ That's it! You have a working AI assistant in 2 minutes.
 
 ## 💬 Chat Apps
 
-Talk to your picoclaw through Telegram, Discord, DingTalk, LINE, or Zalo
+Talk to your picoclaw through Telegram, Discord, WhatsApp, Zalo, DingTalk, LINE, and more
 
-| Channel      | Setup                              |
-| ------------ | ---------------------------------- |
-| **Telegram** | Easy (just a token)                |
-| **Discord**  | Easy (bot token + intents)         |
-| **QQ**       | Easy (AppID + AppSecret)           |
-| **DingTalk** | Medium (app credentials)           |
-| **LINE**     | Medium (credentials + webhook URL) |
-| **Zalo**     | Medium (OAuth + webhook URL)       |
+| Channel       | Setup                                    |
+| ------------- | ---------------------------------------- |
+| **Telegram**  | Easy (just a token)                      |
+| **Discord**   | Easy (bot token + intents)               |
+| **QQ**        | Easy (AppID + AppSecret)                 |
+| **Zalo**      | Easy (bot token from Bot Creator)        |
+| **WhatsApp**  | Medium (Node.js bridge + QR code scan)   |
+| **DingTalk**  | Medium (app credentials)                 |
+| **LINE**      | Medium (credentials + webhook URL)       |
 
 <details>
 <summary><b>Telegram</b> (Recommended)</summary>
@@ -451,12 +452,11 @@ picoclaw gateway
 <details>
 <summary><b>Zalo</b> (Vietnam)</summary>
 
-**1. Create a Zalo Official Account**
+**1. Create a bot**
 
-- Register at [Zalo OA](https://oa.zalo.me)
-- Create a Zalo App at [Zalo Developers](https://developers.zalo.me)
-- Approve "Send and receive messages" permission
-- Copy **App ID**, **App Secret**, and **OA Secret Key**
+- Go to [Zalo Bot Creator](https://zalo.me/s/botcreator/)
+- Create a new bot
+- Copy the bot token (format: `id:secret`)
 
 **2. Configure**
 
@@ -465,43 +465,64 @@ picoclaw gateway
   "channels": {
     "zalo": {
       "enabled": true,
-      "app_id": "YOUR_ZALO_APP_ID",
-      "app_secret": "YOUR_ZALO_APP_SECRET",
-      "oa_secret_key": "YOUR_OA_SECRET_KEY",
-      "webhook_host": "0.0.0.0",
-      "webhook_port": 18792,
-      "webhook_path": "/webhook/zalo",
+      "token": "YOUR_BOT_ID:YOUR_BOT_SECRET",
+      "mode": "polling",
       "allow_from": []
     }
   }
 }
 ```
 
-**3. Authorize OAuth**
+> Set `mode` to `"polling"` (default, no public URL needed) or `"webhook"` (requires HTTPS URL).
 
-```bash
-picoclaw auth login --provider zalo
-```
-
-This opens your browser for Zalo OAuth consent. Tokens are saved to `~/.picoclaw/zalo_tokens.json`.
-
-**4. Set up Webhook URL**
-
-```bash
-ngrok http 18792
-```
-
-In the Zalo OA dashboard, set the webhook URL to `https://your-domain/webhook/zalo` and enter your OA Secret Key.
-
-**5. Run**
+**3. Run**
 
 ```bash
 picoclaw gateway
 ```
 
-> Zalo OA supports 1:1 messaging only (no group chats). Text messages only in Phase 1.
+> Zalo Bot Platform supports 1:1 messaging. Text messages are chunked at 2000 characters.
 
-> **Docker Compose**: Add `ports: ["18792:18792"]` to expose the Zalo webhook port.
+</details>
+
+<details>
+<summary><b>WhatsApp</b></summary>
+
+WhatsApp requires a separate Node.js bridge process using the [Baileys](https://github.com/WhiskeySockets/Baileys) library.
+
+**1. Start the bridge**
+
+```bash
+cd tools/whatsapp-bridge
+npm install
+node index.js
+```
+
+**2. Scan QR code**
+
+Open WhatsApp on your phone → Settings → Linked Devices → Link a Device → Scan the QR code in terminal.
+
+**3. Configure**
+
+```json
+{
+  "channels": {
+    "whatsapp": {
+      "enabled": true,
+      "bridge_url": "ws://localhost:3001",
+      "allow_from": []
+    }
+  }
+}
+```
+
+**4. Run**
+
+```bash
+picoclaw gateway
+```
+
+> See [tools/whatsapp-bridge/README.md](tools/whatsapp-bridge/README.md) for troubleshooting and details.
 
 </details>
 
