@@ -239,17 +239,23 @@ That's it! You have a working AI assistant in 2 minutes.
 
 ## 💬 Chat Apps
 
-Talk to your picoclaw through Telegram, Discord, WhatsApp, Zalo, DingTalk, LINE, and more
+Talk to your PicoClaw through 13+ channels — from Telegram to hardware displays.
 
-| Channel       | Setup                                    |
-| ------------- | ---------------------------------------- |
-| **Telegram**  | Easy (just a token)                      |
-| **Discord**   | Easy (bot token + intents)               |
-| **QQ**        | Easy (AppID + AppSecret)                 |
-| **Zalo**      | Easy (bot token from Bot Creator)        |
-| **WhatsApp**  | Medium (Node.js bridge + QR code scan)   |
-| **DingTalk**  | Medium (app credentials)                 |
-| **LINE**      | Medium (credentials + webhook URL)       |
+| Channel         | Setup                                    |
+| --------------- | ---------------------------------------- |
+| **Telegram**    | Easy (just a token)                      |
+| **Discord**     | Easy (bot token + intents)               |
+| **QQ**          | Easy (AppID + AppSecret)                 |
+| **Zalo**        | Easy (bot token from Bot Creator)        |
+| **Slack**       | Easy (bot token + app token)             |
+| **WhatsApp**    | Medium (Node.js bridge + QR code scan)   |
+| **DingTalk**    | Medium (app credentials)                 |
+| **LINE**        | Medium (credentials + webhook URL)       |
+| **Feishu**      | Medium (app credentials + webhook)       |
+| **OneBot**      | Medium (WebSocket URL)                   |
+| **ZaloUser**    | Medium (zca-cli + QR code login)         |
+| **Web**         | Easy (built-in web UI)                   |
+| **MaixCAM**     | Hardware (TCP connection)                |
 
 <details>
 <summary><b>Telegram</b> (Recommended)</summary>
@@ -366,6 +372,41 @@ picoclaw gateway
 </details>
 
 <details>
+<summary><b>Slack</b></summary>
+
+**1. Create a Slack app**
+
+* Go to [Slack API](https://api.slack.com/apps) → Create New App → From Scratch
+* Under **OAuth & Permissions**, add bot scopes: `chat:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`
+* Under **Socket Mode**, enable it and generate an **App-Level Token** (scope: `connections:write`)
+* Install the app to your workspace and copy the **Bot User OAuth Token**
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "slack": {
+      "enabled": true,
+      "bot_token": "xoxb-YOUR-BOT-TOKEN",
+      "app_token": "xapp-YOUR-APP-TOKEN",
+      "allow_from": []
+    }
+  }
+}
+```
+
+**3. Run**
+
+```bash
+picoclaw gateway
+```
+
+> Slack uses Socket Mode (no public URL needed). The bot responds to DMs and @mentions.
+
+</details>
+
+<details>
 <summary><b>DingTalk</b></summary>
 
 **1. Create a bot**
@@ -389,7 +430,7 @@ picoclaw gateway
 }
 ```
 
-> Set `allow_from` to empty to allow all users, or specify QQ numbers to restrict access.
+> Set `allow_from` to empty to allow all users, or specify user IDs to restrict access.
 
 **3. Run**
 
@@ -452,6 +493,8 @@ picoclaw gateway
 <details>
 <summary><b>Zalo</b> (Vietnam)</summary>
 
+Uses the [Zalo Bot Platform API](https://bot.zaloplatforms.com/) — a Telegram-style REST API with permanent bot tokens (no OAuth needed).
+
 **1. Create a bot**
 
 - Go to [Zalo Bot Creator](https://zalo.me/s/botcreator/)
@@ -475,20 +518,45 @@ picoclaw gateway
 
 > Set `mode` to `"polling"` (default, no public URL needed) or `"webhook"` (requires HTTPS URL).
 
+For webhook mode, add:
+
+```json
+{
+  "channels": {
+    "zalo": {
+      "enabled": true,
+      "token": "YOUR_BOT_ID:YOUR_BOT_SECRET",
+      "mode": "webhook",
+      "webhook_host": "0.0.0.0",
+      "webhook_port": 18792,
+      "webhook_path": "/webhook/zalo",
+      "webhook_secret": "YOUR_SECRET",
+      "allow_from": []
+    }
+  }
+}
+```
+
 **3. Run**
 
 ```bash
 picoclaw gateway
 ```
 
-> Zalo Bot Platform supports 1:1 messaging. Text messages are chunked at 2000 characters.
+**Features:**
+
+* Long-polling (default) or webhook mode
+* Receives text, image captions, sticker events
+* Long messages auto-chunked at 2000 characters
+* Token validated on startup via `getMe` API call
+* Exponential backoff on polling errors
 
 </details>
 
 <details>
 <summary><b>WhatsApp</b></summary>
 
-WhatsApp requires a separate Node.js bridge process using the [Baileys](https://github.com/WhiskeySockets/Baileys) library.
+WhatsApp uses a separate Node.js bridge process built on [Baileys v7](https://github.com/WhiskeySockets/Baileys) — no official WhatsApp Business API needed, works with any personal WhatsApp number.
 
 **1. Start the bridge**
 
@@ -501,6 +569,8 @@ node index.js
 **2. Scan QR code**
 
 Open WhatsApp on your phone → Settings → Linked Devices → Link a Device → Scan the QR code in terminal.
+
+> After the first scan, the session is persisted in `auth_store/`. The bridge will reconnect automatically without requiring another scan.
 
 **3. Configure**
 
@@ -519,10 +589,215 @@ Open WhatsApp on your phone → Settings → Linked Devices → Link a Device �
 **4. Run**
 
 ```bash
+# Start the bridge first (keep running)
+cd tools/whatsapp-bridge && node index.js
+
+# Then in another terminal
 picoclaw gateway
 ```
 
-> See [tools/whatsapp-bridge/README.md](tools/whatsapp-bridge/README.md) for troubleshooting and details.
+**Features:**
+
+* Personal WhatsApp number — no Business API needed
+* Session persistence (QR scan only needed once)
+* Auto-reconnect with exponential backoff (up to 10 attempts)
+* Receives text messages, image/video captions
+* Bridge health check via WebSocket ping every 54s
+* Bridge port configurable via `BRIDGE_PORT` env var (default: 3001)
+
+**Troubleshooting:**
+
+* "Couldn't link device" → Delete `auth_store/` and restart for fresh QR
+* "bad decrypt" on startup → Harmless, Baileys syncing state from scratch
+* Error 405 → Update Baileys: `npm install @whiskeysockets/baileys@latest`
+
+> See [tools/whatsapp-bridge/README.md](tools/whatsapp-bridge/README.md) for full documentation.
+
+</details>
+
+<details>
+<summary><b>Feishu / Lark</b></summary>
+
+**1. Create an app**
+
+* Go to [Feishu Open Platform](https://open.feishu.cn/app)
+* Create a custom app → Get **App ID** and **App Secret**
+* Under **Event Subscriptions**, set the webhook URL and get the **Encrypt Key** and **Verification Token**
+* Add bot capability and required permissions (`im:message`, `im:message.create_v1`)
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "feishu": {
+      "enabled": true,
+      "app_id": "cli_YOUR_APP_ID",
+      "app_secret": "YOUR_APP_SECRET",
+      "encrypt_key": "YOUR_ENCRYPT_KEY",
+      "verification_token": "YOUR_VERIFICATION_TOKEN",
+      "allow_from": []
+    }
+  }
+}
+```
+
+**3. Run**
+
+```bash
+picoclaw gateway
+```
+
+> Feishu requires a public webhook URL. Use ngrok or a reverse proxy for local development.
+
+</details>
+
+<details>
+<summary><b>OneBot</b> (WeChat, QQ via frameworks)</summary>
+
+OneBot is an open protocol supported by frameworks like [Lagrange](https://github.com/LagrangeDev/Lagrange.Core), [NapCat](https://github.com/NapNeko/NapCatQQ), etc. It connects PicoClaw to QQ/WeChat via WebSocket.
+
+**1. Set up an OneBot implementation**
+
+* Install a OneBot v11 compatible framework (e.g., Lagrange, NapCat)
+* Configure it to expose a WebSocket server
+
+**2. Configure**
+
+```json
+{
+  "channels": {
+    "onebot": {
+      "enabled": true,
+      "ws_url": "ws://localhost:6700",
+      "access_token": "",
+      "reconnect_interval": 5,
+      "group_trigger_prefix": ["/ai", "@bot"],
+      "allow_from": []
+    }
+  }
+}
+```
+
+**3. Run**
+
+```bash
+picoclaw gateway
+```
+
+> In groups, the bot only responds to messages starting with a trigger prefix. DMs are always processed.
+
+</details>
+
+<details>
+<summary><b>Zalo Personal</b> (Vietnam)</summary>
+
+Zalo Personal uses your personal Zalo account via the [zca-cli](https://github.com/nicejuice-cc/zca-cli) binary. Unlike the Zalo Bot Platform, this works with personal accounts and supports group chats.
+
+**1. Install zca-cli**
+
+```bash
+# Download from https://github.com/nicejuice-cc/zca-cli/releases
+# Or build from source
+# Make sure 'zca' is in your PATH
+```
+
+**2. Authenticate**
+
+```bash
+zca auth login
+# Scan QR code with your Zalo app
+```
+
+**3. Configure**
+
+```json
+{
+  "channels": {
+    "zalouser": {
+      "enabled": true,
+      "profile": "",
+      "zca_path": "",
+      "allow_from": []
+    }
+  }
+}
+```
+
+> Leave `zca_path` empty to use `zca` from PATH. Set `profile` to use a specific zca profile.
+
+**4. Run**
+
+```bash
+picoclaw gateway
+```
+
+> The bot listens via `zca listen -r -k` and sends via `zca msg send`. Auto-reconnects on failure.
+
+</details>
+
+<details>
+<summary><b>Web UI</b></summary>
+
+Built-in web chat interface — no external dependencies needed.
+
+**1. Configure**
+
+```json
+{
+  "channels": {
+    "web": {
+      "enabled": true,
+      "host": "0.0.0.0",
+      "port": 18790,
+      "auth_token": "",
+      "allow_from": []
+    }
+  }
+}
+```
+
+> Set `auth_token` to require authentication. Leave empty for open access (local use only).
+
+**2. Run**
+
+```bash
+picoclaw gateway
+```
+
+**3. Open in browser**
+
+Go to `http://localhost:18790` to chat with your PicoClaw.
+
+</details>
+
+<details>
+<summary><b>MaixCAM</b> (Hardware)</summary>
+
+Connect to a [MaixCAM](https://wiki.sipeed.com/maixcam) device for AI-powered camera interactions.
+
+**1. Configure**
+
+```json
+{
+  "channels": {
+    "maixcam": {
+      "enabled": true,
+      "host": "192.168.1.100",
+      "port": 18812,
+      "allow_from": []
+    }
+  }
+}
+```
+
+**2. Run**
+
+```bash
+picoclaw gateway
+```
+
+> PicoClaw connects to MaixCAM via TCP. The device must be running the MaixCAM AI service.
 
 </details>
 
@@ -785,7 +1060,11 @@ picoclaw agent -m "Hello"
 {
   "agents": {
     "defaults": {
-      "model": "anthropic/claude-opus-4-5"
+      "model": "anthropic/claude-opus-4-5",
+      "workspace": "~/.picoclaw/workspace",
+      "max_tokens": 8192,
+      "temperature": 0.7,
+      "max_tool_iterations": 20
     }
   },
   "providers": {
@@ -803,12 +1082,53 @@ picoclaw agent -m "Hello"
       "allow_from": ["123456789"]
     },
     "discord": {
-      "enabled": true,
+      "enabled": false,
       "token": "",
-      "allow_from": [""]
+      "allow_from": []
+    },
+    "slack": {
+      "enabled": false,
+      "bot_token": "xoxb-xxx",
+      "app_token": "xapp-xxx",
+      "allow_from": []
     },
     "whatsapp": {
-      "enabled": false
+      "enabled": false,
+      "bridge_url": "ws://localhost:3001",
+      "allow_from": []
+    },
+    "zalo": {
+      "enabled": false,
+      "token": "BOT_ID:BOT_SECRET",
+      "mode": "polling",
+      "allow_from": []
+    },
+    "zalouser": {
+      "enabled": false,
+      "profile": "",
+      "zca_path": "",
+      "allow_from": []
+    },
+    "qq": {
+      "enabled": false,
+      "app_id": "",
+      "app_secret": "",
+      "allow_from": []
+    },
+    "dingtalk": {
+      "enabled": false,
+      "client_id": "",
+      "client_secret": "",
+      "allow_from": []
+    },
+    "line": {
+      "enabled": false,
+      "channel_secret": "",
+      "channel_access_token": "",
+      "webhook_host": "0.0.0.0",
+      "webhook_port": 18791,
+      "webhook_path": "/webhook/line",
+      "allow_from": []
     },
     "feishu": {
       "enabled": false,
@@ -818,10 +1138,25 @@ picoclaw agent -m "Hello"
       "verification_token": "",
       "allow_from": []
     },
-    "qq": {
+    "onebot": {
       "enabled": false,
-      "app_id": "",
-      "app_secret": "",
+      "ws_url": "ws://localhost:6700",
+      "access_token": "",
+      "reconnect_interval": 5,
+      "group_trigger_prefix": ["/ai"],
+      "allow_from": []
+    },
+    "web": {
+      "enabled": true,
+      "host": "0.0.0.0",
+      "port": 18790,
+      "auth_token": "",
+      "allow_from": []
+    },
+    "maixcam": {
+      "enabled": false,
+      "host": "",
+      "port": 18812,
       "allow_from": []
     }
   },

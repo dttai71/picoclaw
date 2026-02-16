@@ -87,24 +87,45 @@ Config lives at `~/.picoclaw/config.json`. All values can be overridden with `PI
 
 ## Channel-Specific Notes
 
-### Zalo (Bot Platform API)
+### Zalo (Bot Platform API) — `pkg/channels/zalo.go`
 
-- Uses `https://bot-api.zapps.me/bot{token}/{method}` (Telegram-style API)
-- Token format: `id:secret` from [Zalo Bot Creator](https://zalo.me/s/botcreator/)
-- Supports long-polling (default) and webhook modes
-- Config: `channels.zalo.token`, `channels.zalo.mode` ("polling" or "webhook")
+- **API**: `https://bot-api.zapps.me/bot{token}/{method}` — Telegram-style REST API (all POST)
+- **Token format**: `id:secret` from [Zalo Bot Creator](https://zalo.me/s/botcreator/) — permanent, no OAuth needed
+- **Modes**: Long-polling (default, no public URL) or webhook (requires HTTPS)
+- **Polling**: `getUpdates` with 30s timeout, exponential backoff on errors, 408 = no updates (not an error)
+- **Webhook**: `X-Bot-Api-Secret-Token` header verification, 1MB body limit, async processing
+- **API response format**: Dual envelope format — `{ok, result, error_code}` or `{error, message, data}`
+- **getUpdates quirk**: API returns single update object (not array); code handles both via `json.RawMessage`
+- **Offset tracking**: Uses `message.date` (unix timestamp) since API has no `update_id` field
+- **Events**: `message.text.received`, `message.image.received`, `message.sticker.received`
+- **Message fields**: Sender at `message.from.id`, chat at `message.chat.id`, text at `message.text`
+- **Outbound**: `sendMessage` with `{chat_id, text}`, text chunked at 2000 chars with 500ms rate limit
+- **Config**: `channels.zalo.token`, `channels.zalo.mode` ("polling" or "webhook")
+- **Validation**: Token must contain `:` separator; `getMe()` called on Start to verify
 
-### ZaloUser (Personal Account via zca-cli)
+### ZaloUser (Personal Account via zca-cli) — `pkg/channels/zalouser.go`
 
-- Wraps external `zca` CLI binary for personal Zalo account automation
-- Requires `zca` in PATH (install from zca-cli docs)
-- Uses `zca listen -r -k` for inbound, `zca msg send` for outbound
-- Config: `channels.zalouser.enabled`, `channels.zalouser.profile`
+- **Pattern**: Wraps external `zca` CLI binary — spawns `zca listen -r -k` as long-running child process
+- **Inbound**: Reads JSON lines from stdout via `bufio.Scanner`, parses `zcaMessage` structs
+- **Outbound**: `exec.CommandContext(zca, "msg", "send", chatID, text)` — serialized via `sendMu` mutex
+- **Message struct**: `{threadId, msgId, type, content, timestamp, metadata: {threadType, senderId}}`
+- **Message types**: `type=1` is text (only type handled); `threadType=1` is DM, `2` is group
+- **Auto-restart**: Exponential backoff (5s → 5min) when `zca listen` process exits
+- **Profile support**: `-p profile` flag passed to all zca commands when `profile` is configured
+- **Binary discovery**: `exec.LookPath(zca)` on init — errors if not found
+- **Config**: `channels.zalouser.enabled`, `channels.zalouser.profile`, `channels.zalouser.zca_path`
 
-### WhatsApp (Baileys Bridge)
+### WhatsApp (Baileys Bridge) — `pkg/channels/whatsapp.go`
 
-- Requires separate Node.js bridge process (`tools/whatsapp-bridge/`)
-- Bridge uses Baileys v7 (ESM) to connect to WhatsApp Web via WebSocket
-- PicoClaw connects as WebSocket client to `ws://localhost:3001`
-- First run requires QR code scan (WhatsApp → Linked Devices)
-- Config: `channels.whatsapp.bridge_url`
+- **Architecture**: Node.js bridge (Baileys v7) → WebSocket server :3001 → PicoClaw Go client (gorilla/websocket)
+- **Bridge**: `tools/whatsapp-bridge/index.js` — ESM, uses `@whiskeysockets/baileys` v7
+- **Protocol**: JSON over WebSocket, protocol v1 — types: `message`, `status`, `error`
+- **Inbound message fields**: `{from, chat, content, id, from_name}` — phone numbers without @s.whatsapp.net
+- **Outbound format**: `{type: "message", to: "phone_number", content: "text"}`
+- **Status events**: `connected`, `disconnected`, `qr_required` (with QR string)
+- **Reconnect**: Exponential backoff (1s → 5min), max 10 attempts on connection loss
+- **Session persistence**: Auth stored in `tools/whatsapp-bridge/auth_store/` — survives restarts
+- **First run**: QR code displayed in bridge terminal — scan with WhatsApp → Linked Devices
+- **Known issues**: "bad decrypt" errors on fresh connection are harmless (Baileys state sync)
+- **Bridge health**: Ping frames every 54s, auto-handled by gorilla/websocket
+- **Config**: `channels.whatsapp.bridge_url` (default: `ws://localhost:3001`)
